@@ -3,8 +3,11 @@ import base64
 from io import BytesIO
 from PIL import Image
 
+from PyMongoWrapper import F, Fn, Var, ObjectId
+from PyMongoWrapper.dbo import DbObjectCollection
+
 from jindai import Plugin
-from jindai.models import ImageItem, Paragraph, F, Fn, ObjectId, Var, DbObjectCollection
+from jindai.models import ImageItem, Paragraph
 from plugins.gallery import single_item, ImageOrAlbumStage
 from plugins.hashing import bitcount, to_int, whash
 from . import facedetectcnn
