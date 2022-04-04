@@ -57,73 +57,63 @@ class FaceDetPlugin(Plugin):
         datasource_impl.limit = 0
         datasource_impl.raw = False
 
-        if iid == '':
-            datasource_impl.aggregator.addFields(
-                images=Fn.filter(input=Var.images, as_='item',
-                                 cond=Fn.size(Fn.ifNull('$$item.faces', [])))
-            ).match(F.images != [])
+        fid = 0 if not fid else int(fid)
+        iid = ObjectId(iid)
 
-            result_set = datasource_impl.fetch()
-            return result_set
+        fdh = [to_int(f) for f in ImageItem.first(F.id == iid).faces]
+        if fid:
+            fdh = [fdh[fid-1]]
+        if not fdh:
+            return []
 
-        else:
-            fid = 0 if not fid else int(fid)
-            iid = ObjectId(iid)
+        groupped = {}
+        results = []
+        for paragraph in datasource_impl.fetch():
+            for image_item in paragraph.images:
+                if not image_item or not isinstance(image_item, ImageItem) \
+                    or image_item.flag != 0 or not image_item.faces or image_item.id == iid:
+                    continue
+                image_item.score = min([
+                    min([bitcount(to_int(i) ^ j) for j in fdh])
+                    for i in image_item.faces
+                ])
+                rpo = Paragraph(**paragraph.as_dict())
+                rpo.images = [image_item]
+                if archive:
+                    groups = [
+                        g for g in paragraph.keywords if g.startswith('*')]
+                    for group in groups or [paragraph.source['url']]:
+                        if group not in groupped or groupped[group][0] > image_item.score:
+                            groupped[group] = (image_item.score, rpo)
+                else:
+                    results.append((image_item.score, rpo))
 
-            fdh = [to_int(f) for f in ImageItem.first(F.id == iid).faces]
-            if fid:
-                fdh = [fdh[fid-1]]
-            if not fdh:
-                return []
+        if archive:
+            results = list(groupped.values())
 
-            groupped = {}
-            results = []
-            for paragraph in datasource_impl.fetch():
-                for image_item in paragraph.images:
-                    if not image_item or not isinstance(image_item, ImageItem) \
-                       or image_item.flag != 0 or not image_item.faces or image_item.id == iid:
-                        continue
-                    image_item.score = min([
-                        min([bitcount(to_int(i) ^ j) for j in fdh])
-                        for i in image_item.faces
-                    ])
-                    rpo = Paragraph(**paragraph.as_dict())
-                    rpo.images = [image_item]
-                    if archive:
-                        groups = [
-                            g for g in paragraph.keywords if g.startswith('*')]
-                        for group in groups or [paragraph.source['url']]:
-                            if group not in groupped or groupped[group][0] > image_item.score:
-                                groupped[group] = (image_item.score, rpo)
-                    else:
-                        results.append((image_item.score, rpo))
+        results = [r for _, r in sorted(results, key=lambda x: x[0])[
+            offset:offset+limit]]
 
-            if archive:
-                results = list(groupped.values())
-
-            results = [r for _, r in sorted(results, key=lambda x: x[0])[
-                offset:offset+limit]]
-
-            paragraph_faces = single_item('', iid)
-            source_paragraph = paragraph_faces[0]
-            for face in self.det.crop_faces(source_paragraph.images[0].image_raw):
-                saved = BytesIO()
-                face.save(saved, format='JPEG')
-                paragraph_faces.append(
-                    Paragraph(
-                        _id=source_paragraph.id,
-                        images=[
-                            ImageItem(source={
-                                      'url': 'data:image/jpeg;base64,'
-                                      + base64.b64encode(saved.getvalue()).decode('ascii')})
-                        ]
-                    )
+        paragraph_faces = single_item('', iid)
+        source_paragraph = paragraph_faces[0]
+        for face in self.det.crop_faces(source_paragraph.images[0].image_raw):
+            saved = BytesIO()
+            face.save(saved, format='JPEG')
+            paragraph_faces.append(
+                Paragraph(
+                    _id=source_paragraph.id,
+                    images=[
+                        ImageItem(source={
+                                    'url': 'data:image/jpeg;base64,'
+                                    + base64.b64encode(saved.getvalue()).decode('ascii')})
+                    ]
                 )
+            )
 
-            if fid:
-                paragraph_faces = [paragraph_faces[0], paragraph_faces[fid]]
+        if fid:
+            paragraph_faces = [paragraph_faces[0], paragraph_faces[fid]]
 
-            return paragraph_faces + [{'spacer': 'spacer'}] + results
+        return paragraph_faces + [{'spacer': 'spacer'}] + results
 
     def get_filters(self):
         return {
