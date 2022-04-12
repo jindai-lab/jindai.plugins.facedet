@@ -42,10 +42,14 @@ class FaceDet(ImageOrAlbumStage):
 class FaceDetPlugin(Plugin):
     """人脸检测插件"""
 
-    def __init__(self, app, **_):
-        super().__init__(app)
+    def __init__(self, pmanager, **_):
+        super().__init__(pmanager)
         self.det = FaceDet()
+
         self.register_pipelines([FaceDet])
+        self.register_filter('face',
+                             keybind='e', format_string='face/{imageitem._id}',
+                             icon='mdi-emoticon-outline', handler=self.handle_page)
         ImageItem.set_field('faces', DbObjectCollection(bytes))
 
     def handle_page(self, datasource_impl, iid='', fid=''):
@@ -71,7 +75,7 @@ class FaceDetPlugin(Plugin):
         for paragraph in datasource_impl.fetch():
             for image_item in paragraph.images:
                 if not image_item or not isinstance(image_item, ImageItem) \
-                    or image_item.flag != 0 or not image_item.faces or image_item.id == iid:
+                        or image_item.flag != 0 or not image_item.faces or image_item.id == iid:
                     continue
                 image_item.score = min([
                     min([bitcount(to_int(i) ^ j) for j in fdh])
@@ -104,8 +108,8 @@ class FaceDetPlugin(Plugin):
                     _id=source_paragraph.id,
                     images=[
                         ImageItem(source={
-                                    'url': 'data:image/jpeg;base64,'
-                                    + base64.b64encode(saved.getvalue()).decode('ascii')})
+                            'url': 'data:image/jpeg;base64,'
+                            + base64.b64encode(saved.getvalue()).decode('ascii')})
                     ]
                 )
             )
@@ -114,12 +118,3 @@ class FaceDetPlugin(Plugin):
             paragraph_faces = [paragraph_faces[0], paragraph_faces[fid]]
 
         return paragraph_faces + [{'spacer': 'spacer'}] + results
-
-    def get_filters(self):
-        return {
-            'face': {
-                'format': 'face/{imageitem._id}',
-                'shortcut': 'e',
-                'icon': 'mdi-emoticon-outline'
-            }
-        }
